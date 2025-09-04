@@ -4,7 +4,7 @@ from pydantic import ValidationError, BaseModel
 from components.schemas import SchemaSpec
 from clients import OpenAIClient
 
-from typing import Optional, Any
+from typing import Optional
 from textwrap import dedent
 import types
 import json
@@ -52,6 +52,7 @@ class ConvoExtractSchema:
         lines = []
         lines.append("from __future__ import annotations")
         lines.append("from typing import Optional, Literal")
+        lines.append("from typing_extensions import Annotated")
         lines.append("from pydantic import BaseModel, Field")
         lines.append("")
         lines.append(f"class {spec.class_name}(BaseModel):")
@@ -73,10 +74,24 @@ class ConvoExtractSchema:
                 # For strings, quote; for others let json dumps handle safely
                 default_expr = json.dumps(f.default)
 
-            # Field line
-            lines.append(
-                f"    {f.name}: {py_type} = Field({default_expr}, description={json.dumps(f.description)})"
-            )
+            has_constraints = getattr(f, "ge", None) is not None or getattr(f, "le", None) is not None
+
+            if py_type == "int" and has_constraints:
+                inner_args = []
+                if getattr(f, "ge", None) is not None:
+                    inner_args.append(f"ge={f.ge}")
+                if getattr(f, "le", None) is not None:
+                    inner_args.append(f"le={f.le}")
+                inner_field = f"Field({', '.join(inner_args)})"
+
+                py_type = f"Annotated[int, {inner_field}]"
+
+            outer_args = [default_expr]
+            if f.description:
+                outer_args.append(f"description={json.dumps(f.description)}")
+            outer_field = f"Field({', '.join(outer_args)})"
+
+            lines.append(f"    {f.name}: {py_type} = {outer_field}")
         return "\n".join(lines)
 
     async def build_model_class_from_source(self):
