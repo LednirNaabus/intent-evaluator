@@ -25,12 +25,14 @@ class ConversationPipeline:
         conversation: str,
         conversation_stats: List[Dict],
         rubric: str,
+        intent_prompt: str,
         model: str = "gpt-4o-mini"
     ):
         self.openai_client = openai_client
         self.conversation = conversation
         self.conversation_stats = conversation_stats
         self.rubric = rubric
+        self.intent_prompt = intent_prompt
         self.model = model
         self.rendered = None
 
@@ -47,7 +49,7 @@ class ConversationPipeline:
 
     async def extract_signals(self):
         extractor = SchemaAwareExtractor(
-            rubric=self.rubric,
+            rubric=self.intent_prompt,
             schema_class=self.schema_class,
             messages=self.conversation,
             client=self.openai_client,
@@ -62,7 +64,7 @@ class ConversationPipeline:
 
     async def evaluate_intent(self, signals):
         intent_eval = IntentEvaluator(
-            rubric_text=self.rubric,
+            rubric_text=self.intent_prompt,
             signals=signals,
             client=self.openai_client,
             model=self.model
