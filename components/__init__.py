@@ -4,6 +4,7 @@ from components.ConvoExtractSchema import ConvoExtractSchema
 from components.ConvoDataExtract import ConvoDataExtract
 from components.IntentEvaluator import IntentEvaluator
 from components.pipeline import ConversationPipeline
+from components.pipeline import process_tickets, main
 
 __all__ = [
     "ConversationExtractor",
@@ -11,5 +12,7 @@ __all__ = [
     "ConversationPipeline",
     "ConvoExtractSchema",
     "ConvoDataExtract",
-    "IntentEvaluator"
+    "process_tickets",
+    "IntentEvaluator",
+    "main"
 ]

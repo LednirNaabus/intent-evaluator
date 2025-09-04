@@ -1,21 +1,38 @@
+from config import OPENAI_API_KEY, RUBRIC_PROMPT, INTENT_RUBRIC
 from components import (
+    ConversationExtractor,
     SchemaAwareExtractor,
     ConvoExtractSchema,
     IntentEvaluator
 )
-from clients import OpenAIClient
+from clients import OpenAIClient, BigQueryClient
 from typing import List, Dict
+import asyncio
 import json
 
 class ConversationPipeline:
     """
     The main orchestrator for the schema generator using the intent criteria.
+    
+    The pipeline has the following flow:
+
+    1. Build the schema
+    2. Extract signals
+    3. Evaluate intent
+    4. Generate the score card from the intent evaluation
+
+    Args:
+        `openai_client` (OpenAIClient): An `AsyncOpenAI` client.
+        `conversation` (str): The conversation string. **Note**: should be parsed.
+        `conversation_stats` (List[Dict]): The stats and metadata of the parsed conversation string.
+        `initial_prompt` (str): The rubric for extracting data from the conversation.
 
     Usage:
 
     ```
     async def main():
-        pipeline = ConversationPipeline(api_key="YOUR_API_KEY", convo_id=convo_id, intent_prompt="YOUR_INTENT_PROMPT")
+        # Set up clients and conversation data here
+        pipeline = ConversationPipeline(openai_client, conversation, conversation_stats, initial_prompt)
         await pipeline.run()
     ```
     """
@@ -78,4 +95,47 @@ class ConversationPipeline:
         await self.build_schema()
         signals = await self.extract_signals()
         results = await self.evaluate_intent(signals)
-        return json.dumps(results, indent=4, ensure_ascii=False)
+        return results
+
+# Run the pipeline using asyncio.gather()
+async def process_tickets(
+    openai_client: OpenAIClient,
+    bq_client: BigQueryClient
+):
+    async def run_pipeline(ticket_id):
+        print(f"Ticket ID: {ticket_id}")
+        convo_extractor = ConversationExtractor(bq_client, ticket_id)
+        raw_convo = convo_extractor.get_convo_str()
+        convo_parsed = convo_extractor.parse_conversation(raw_convo)
+        convo_stats = convo_extractor.convo_stats(convo_parsed)
+
+        pipeline = ConversationPipeline(
+            openai_client=openai_client,
+            conversation=convo_parsed,
+            conversation_stats=convo_stats,
+            rubric=RUBRIC_PROMPT,
+            intent_prompt=INTENT_RUBRIC
+        )
+        try:
+            result = await pipeline.run()
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+            return ticket_id, result
+        except Exception as e:
+            print(f"Exception occurred while running pipeline: {e}")
+            return ticket_id, None
+
+    chats = bq_client.recent_tickets(table_name="messages", limit=1)
+    ticket_ids = chats["ticket_id"].to_list()
+    print(f"Number of tickets: {len(ticket_ids)}")
+    tasks = [run_pipeline(ticket_id) for ticket_id in ticket_ids]
+    results = await asyncio.gather(*tasks)
+    return {
+        ticket_id: result
+        for ticket_id, result in results
+    }
+
+async def main():
+    openai = OpenAIClient(OPENAI_API_KEY)
+    openai_client = await openai.init_async_client()
+    bq_client = BigQueryClient()
+    await process_tickets(openai_client, bq_client)
