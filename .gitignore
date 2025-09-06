@@ -1,6 +1,7 @@
 env/
 __pycache__/
 misc/
+/schemas/
 
 .env
 test.py

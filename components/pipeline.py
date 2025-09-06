@@ -7,8 +7,15 @@ from components import (
 )
 from clients import OpenAIClient, BigQueryClient
 from typing import List, Dict
+import logging
 import asyncio
 import json
+import os
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 class ConversationPipeline:
     """
@@ -25,7 +32,9 @@ class ConversationPipeline:
         `openai_client` (OpenAIClient): An `AsyncOpenAI` client.
         `conversation` (str): The conversation string. **Note**: should be parsed.
         `conversation_stats` (List[Dict]): The stats and metadata of the parsed conversation string.
-        `initial_prompt` (str): The rubric for extracting data from the conversation.
+        `rubric` (str): The rubric for extracting data from the conversation.
+        `intent_prompt` (str): The rubric for intent rating.
+        `dir` (str): The name of the directory where the generated schemas are saved. (Default: `schemas`)
 
     Usage:
 
@@ -43,15 +52,42 @@ class ConversationPipeline:
         conversation_stats: List[Dict],
         rubric: str,
         intent_prompt: str,
-        model: str = "gpt-4o-mini"
+        model: str = "gpt-4o-mini",
+        dir: str = "schemas"
     ):
         self.openai_client = openai_client
         self.conversation = conversation
         self.conversation_stats = conversation_stats
         self.rubric = rubric
         self.intent_prompt = intent_prompt
+        self.dir = dir
         self.model = model
         self.rendered = None
+
+        os.makedirs(self.dir, exist_ok=True)
+
+    def save_rendered_schema(self):
+        if not self.rendered:
+            raise ValueError("No schema built yet. Call build_schema() first.")
+
+        existing = [
+            f for f in os.listdir(self.dir)
+            if f.startswith("schema_v") and f.endswith(".py")
+        ]
+        version_numbers = []
+        for f in existing:
+            try:
+                num = int(f.replace("schema_v", "").replace(".py", ""))
+                version_numbers.append(num)
+            except ValueError:
+                continue
+        next_ver = max(version_numbers, default=0) + 1
+        filename = os.path.join(self.dir, f"schema_v{next_ver}.py")
+
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(self.rendered)
+        
+        logging.info(f"Schema saved: {filename}")
 
     async def build_schema(self):
         schema_generator = ConvoExtractSchema(
