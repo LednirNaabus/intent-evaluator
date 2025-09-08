@@ -5,12 +5,12 @@ from components import ConversationExtractor, ConversationPipeline
 from clients import OpenAIClient, BigQueryClient
 import streamlit as st
 import asyncio
+import time
 
 async def validate_api_key(api_key: str) -> bool:
     try:
         openai = await OpenAIClient(api_key).init_async_client()
         await openai.models.list()
-        await openai.close()
         return True
     except Exception:
         return False
@@ -35,7 +35,9 @@ async def run_analysis(api_key: str, ticket_id: str, rubric: str, intent_prompt:
         rubric=rubric,
         intent_prompt=intent_prompt
     )
-    return await pipeline.run()
+
+    results = await pipeline.run()
+    return results, pipeline
 
 def main():
     with st.sidebar:
@@ -69,16 +71,29 @@ def main():
             return
 
         placeholder = st.empty()
-        with placeholder, st.spinner("Analyzing ticket..."):
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                results = loop.run_until_complete(run_analysis(
-                    openai_api_key, ticket_id, rubric, intent_rubric
-                ))
-            finally:
-                loop.close()
+        progress_bar = st.progress(0, text="Analyzing ticket...")
 
-        placeholder.write(results)
+        start = time.perf_counter()
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            for percent in range(0, 100, 10):
+                time.sleep(0.2)
+                progress_bar.progress(percent, text="Analyzing ticket...")
+
+            results, pipeline = loop.run_until_complete(run_analysis(
+                openai_api_key, ticket_id, rubric, intent_rubric
+            ))
+        finally:
+            loop.close()
+
+        elapsed = time.perf_counter() - start
+        progress_bar.progress(100, text=f"Analsis completed in {elapsed:.2f} seconds.")
+        placeholder.success("Analysis complete, pleaes check the Results page.")
+
+        st.session_state["analysis_results"] = results
+        st.session_state["ticket_id"] = ticket_id
+        st.session_state["pipeline_instance"] = pipeline
 
 main()
