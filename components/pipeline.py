@@ -1,11 +1,20 @@
-from config import OPENAI_API_KEY, RUBRIC_PROMPT, INTENT_RUBRIC
+from config import (
+    OPENAI_API_KEY,
+    RUBRIC_PROMPT,
+    INTENT_RUBRIC,
+    MNL_TZ
+)
 from components import (
     ConversationExtractor,
     SchemaAwareExtractor,
     ConvoExtractSchema,
     IntentEvaluator
 )
+
 from clients import OpenAIClient, BigQueryClient
+from google.cloud import bigquery
+
+from datetime import datetime
 from typing import List, Dict
 import logging
 import asyncio
@@ -52,10 +61,12 @@ class ConversationPipeline:
         conversation_stats: List[Dict],
         rubric: str,
         intent_prompt: str,
+        bq_client: BigQueryClient = None,
         model: str = "gpt-4o-mini",
         dir: str = "schemas"
     ):
         self.openai_client = openai_client
+        self.bq_client = bq_client
         self.conversation = conversation
         self.conversation_stats = conversation_stats
         self.rubric = rubric
@@ -66,7 +77,44 @@ class ConversationPipeline:
 
         os.makedirs(self.dir, exist_ok=True)
 
-    def save_rendered_schema(self):
+    def _save_schema_to_bq(self, table_name: str, version: int):
+        if not self.bq_client:
+            logging.warning("BigQuery client is not set.")
+            return
+
+        self.bq_client.ensure_dataset()
+        schema = [
+            bigquery.SchemaField("version", "INT64", mode="REQUIRED"),
+            bigquery.SchemaField("schema", "STRING", mode="REQUIRED"),
+            bigquery.SchemaField("saved_at", "DATETIME", mode="REQUIRED")
+        ]
+        self.bq_client.ensure_table(table_name, schema)
+
+        saved_at = datetime.now(MNL_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        row = {
+            "version": version,
+            "schema": self.rendered,
+            "saved_at": saved_at
+        }
+
+        table_id = f"{self.bq_client.client.project}.{self.bq_client.dataset_id}.{table_name}"
+        errors = self.bq_client.client.insert_rows_json(table_id, [row])
+        if errors:
+            logging.error(f"Failed to save schema to BigQuery: {errors}")
+        else:
+            logging.info(f"Schema v{version} saved to BigQuery: {table_id}")
+        pass
+
+    def save_rendered_schema(self, save_to_bq: bool = False, table_name: str = "convo_schema"):
+        """
+        Locally saves the rendered conversation schema by default.
+
+        If `save_to_bq` is set to `True`, calls `_save_schema_to_bq()` to save the generated schema to BigQuery.
+
+        Args:
+            `save_to_bq` (bool): Flag to check if schema is saved locally or to BigQuery. (Default: `False`)
+            `table_name` (str): The table name in BigQuery. (Default: `convo_schema`)
+        """
         if not self.rendered:
             raise ValueError("No schema built yet. Call build_schema() first.")
 
@@ -88,6 +136,9 @@ class ConversationPipeline:
             f.write(self.rendered)
         
         logging.info(f"Schema saved: {filename}")
+
+        if save_to_bq:
+            self._save_schema_to_bq(table_name, next_ver)
 
     async def build_schema(self):
         schema_generator = ConvoExtractSchema(

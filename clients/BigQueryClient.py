@@ -1,13 +1,43 @@
 from config import DATASET_NAME, BQ_CLIENT, MNL_TZ
-from typing import Optional, Literal
+from google.cloud.exceptions import NotFound
+from typing import Optional, Literal, List
 from google.cloud import bigquery
 
 import pandas as pd
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 class BigQueryClient:
     def __init__(self, client: bigquery.Client = BQ_CLIENT):
         self.client = client
         self.dataset_id = DATASET_NAME
+
+    def ensure_dataset(self):
+        dataset_ref = self.client.dataset(self.dataset_id)
+        try:
+            self.client.get_dataset(dataset_ref=dataset_ref)
+        except NotFound:
+            dataset = bigquery.Dataset(dataset_ref=dataset_ref)
+            dataset.location = "asia-southeast1"
+            self.client.create_dataset(dataset)
+
+    def ensure_table(
+        self,
+        table_name: str,
+        schema: List[bigquery.SchemaField] = None
+    ):
+        table_id = f"{self.client.project}.{self.dataset_id}.{table_name}"
+        try:
+            self.client.get_table(table_id)
+        except NotFound:
+            table = bigquery.Table(table_id, schema=schema)
+            created_table = self.client.create_table(table)
+            created_table.expires = None
+            self.client.update_table(created_table, ["expires"])
 
     def execute_query(self, query: str, return_data: bool = True) -> Optional[pd.DataFrame]:
         query_job = self.client.query(query)
