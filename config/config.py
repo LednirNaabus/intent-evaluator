@@ -21,7 +21,8 @@ except json.JSONDecodeError as e:
 
 # Credentials and client
 SCOPE = [
-    'https://www.googleapis.com/auth/bigquery'
+    'https://www.googleapis.com/auth/bigquery',
+    'https://www.googleapis.com/auth/drive'
 ]
 GOOGLE_CREDS = service_account.Credentials.from_service_account_info(
     CREDS_FILE,
