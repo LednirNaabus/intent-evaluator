@@ -1,3 +1,3 @@
-from app.conf.constants import APP_DESC
+from app.conf.constants import APP_DESC_1, APP_DESC_2, TRAINING_INSTRUCTIONS
 
-__all__ = ["APP_DESC"]
+__all__ = ["APP_DESC_1", "APP_DESC_2", "TRAINING_INSTRUCTIONS"]
