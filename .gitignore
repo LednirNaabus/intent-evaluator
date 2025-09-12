@@ -2,6 +2,7 @@ env/
 __pycache__/
 misc/
 /schemas/
+/rubrics/
 
 .env
 test.py
