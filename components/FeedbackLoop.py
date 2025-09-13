@@ -4,16 +4,18 @@ for classifying the intent rating of conversations between a client and an agent
 """
 from components import ConversationExtractor, ConversationPipeline
 from clients import BigQueryClient, OpenAIClient
+from datetime import datetime
 import pandas as pd
 import logging
 import asyncio
+import os
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-MAX_ITER = 1
+MAX_ITER = 3
 
 class FeedbackLoop:
     def __init__(
@@ -29,6 +31,7 @@ class FeedbackLoop:
         self.rubric_prompt = rubric_prompt
         self.rubric_intent = rubric_intent
         self.model = model
+        self.rubric_history = []
 
     @staticmethod
     def transform_scorecard_results(results: dict, ticket_id: str = None):
@@ -77,6 +80,26 @@ class FeedbackLoop:
         2. Modify the rubric to resolve these mismatches while preserving correct logic for other cases.  
         3. Return ONLY the improved rubric text, not explanations.
         """.format(current_rubric, examples)
+
+    def save_rubric(self, rubric: str, iteration: int, timestamp: str = None):
+        os.makedirs("rubrics", exist_ok=True)
+
+        if timestamp is None:
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+
+        filename = f"rubrics/rubric_v{iteration}.txt"
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(rubric)
+
+        rubric_info = {
+            "iteration": iteration,
+            "timestamp": timestamp,
+            "content": rubric,
+            "filename": filename
+        }
+        self.rubric_history.append(rubric_info)
+        logging.info(f"Rubric saved: {filename}")
+        return filename
 
     # get labeled
     def get_labeled(self, ticket_id: str = None, limit: int = 50) -> pd.DataFrame:
@@ -156,8 +179,12 @@ class FeedbackLoop:
 
         rubric = self.rubric_intent
         results = None
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+
+        self.save_rubric(rubric, 0, timestamp)
         # Main feedback loop
         for i in range(MAX_ITER):
+            logging.info(f"Running {MAX_ITER} iterations...")
             results = await self.process_ticket(ticket_ids,rubric)
             print(results)
             transformed = FeedbackLoop.transform_scorecard_results(results)
@@ -186,8 +213,9 @@ class FeedbackLoop:
             print(new_rubric)
 
             print("\nSaving rubric...")
-            with open(f"rubrics/rubric_v{i+1}.txt", "w") as f:
-                f.write(rubric)
+            self.save_rubric(new_rubric, i+1, timestamp)
+            rubric = new_rubric
+            logging.info("Rubric saved.")
         else:
             print("\nMax iterations reached.")
 
