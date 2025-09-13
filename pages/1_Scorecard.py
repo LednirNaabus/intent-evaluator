@@ -1,6 +1,12 @@
 import streamlit as st
 import pandas as pd
 
+st.set_page_config(
+    page_title="Scorecard",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 # helpers/wrapper for saving generated schemas
 def save_schemas(results: dict, ticket_id: str | None = None):
     saved = []
