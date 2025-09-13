@@ -15,7 +15,7 @@ async def validate_api_key(api_key: str) -> bool:
     except Exception:
         return False
 
-async def run_analysis(api_key: str, ticket_id: str, rubric_prompt: str, rubric_intent: str):
+async def run_analysis(api_key: str, rubric_prompt: str, rubric_intent: str):
     if not rubric_prompt or not rubric_intent:
         st.warning("No prompt found! Using default prompts...")
         rubric_prompt=RUBRIC_PROMPT
@@ -23,9 +23,9 @@ async def run_analysis(api_key: str, ticket_id: str, rubric_prompt: str, rubric_
 
     openai = await OpenAIClient(api_key).init_async_client()
     bq = BigQueryClient()
-    feedbackloop = FeedbackLoop(openai, bq, ticket_id, rubric_prompt, rubric_intent)
-    results, pipeline = await feedbackloop.run_feedback_loop()
-    return results, pipeline
+    feedbackloop = FeedbackLoop(openai, bq, rubric_prompt, rubric_intent)
+    results = await feedbackloop.run_feedback_loop()
+    return results
 
 def main():
     with st.sidebar:
@@ -40,7 +40,6 @@ def main():
             st.caption(TRAINING_INSTRUCTIONS)
 
     with st.form("analyze_form"):
-        ticket_id = st.text_input("Ticket ID:")
         rubric_prompt = st.text_area("Your prompt:", key="rubric_prompt")
         rubric_intent = st.text_area("Your intent evaluation rubric:", key="rubric_intent")
         analyzed = st.form_submit_button("Analyze")
@@ -74,8 +73,8 @@ def main():
                 time.sleep(0.2)
                 progress_bar.progress(percent, text="Analyzing...")
             
-            results, pipeline = loop.run_until_complete(run_analysis(
-                openai_api_key, ticket_id, rubric_prompt, rubric_intent
+            results = loop.run_until_complete(run_analysis(
+                openai_api_key, rubric_prompt, rubric_intent
             ))
         finally:
             loop.close()
@@ -85,7 +84,5 @@ def main():
         placeholder.success("Analysis complete, please check the results page.")
 
         st.session_state["analysis_results"] = results
-        st.session_state["ticket_id"] = ticket_id
-        st.session_state["pipeline_instance"] = pipeline
-
+        
 main()

@@ -6,6 +6,7 @@ from components import ConversationExtractor, ConversationPipeline
 from clients import BigQueryClient, OpenAIClient
 import pandas as pd
 import logging
+import asyncio
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,45 +20,56 @@ class FeedbackLoop:
         self,
         openai: OpenAIClient,
         bq: BigQueryClient,
-        ticket_id: str,
         rubric_prompt: str,
         rubric_intent: str,
         model: str = "gpt-4.1-mini"
     ):
         self.openai = openai
         self.bq = bq
-        self.ticket_id = ticket_id
         self.rubric_prompt = rubric_prompt
         self.rubric_intent = rubric_intent
         self.model = model
 
     # For batches
+    # @staticmethod
+    # def transform_scorecard_results(results: dict, ticket_id: str = None):
+    #     records = []
+
+    #     if isinstance(results, dict) and all(isinstance(v, dict) for v in results.values()):
+    #         for ticket, details in results.items():
+    #             records.append({
+    #                 "ticket_id": ticket,
+    #                 "top_intent": details["top_intent"]
+    #             })
+    #     elif ticket_id is not None and isinstance(results, dict):
+    #         records.append({
+    #             "ticket_id": ticket_id,
+    #             "top_intent": results["top_intent"]
+    #         })
+    #     else:
+    #         raise ValueError("Unsupported format. Check the results again.")
+    #     return records
     @staticmethod
     def transform_scorecard_results(results: dict, ticket_id: str = None):
         records = []
 
         if isinstance(results, dict) and all(isinstance(v, dict) for v in results.values()):
             for ticket, details in results.items():
-                records.append({
-                    "ticket_id": ticket,
-                    "top_intent": details["top_intent"]
-                })
+                if "result" in details and isinstance(details["result"], dict):
+                    records.append({
+                        "ticket_id": ticket,
+                        "top_intent": details["result"]["top_intent"]
+                    })
         elif ticket_id is not None and isinstance(results, dict):
-            records.append({
-                "ticket_id": ticket_id,
-                "top_intent": results["top_intent"]
-            })
+            if "result" in results and isinstance(results["result"], dict):
+                records.append({
+                    "ticket_id": ticket_id,
+                    "top_intent": results["result"]["top_intent"]
+                })
         else:
             raise ValueError("Unsupported format. Check the results again.")
         return records
 
-    # For single ticket/scorecard
-    @staticmethod
-    def transform_scorecard_result(ticket_id: str, details: dict):
-        return [{
-            "ticket_id": ticket_id,
-            "top_intent": details["top_intent"]
-        }]
 
     @staticmethod
     def build_feedback_prompt(mismatches: list, current_rubric: str):
@@ -86,7 +98,7 @@ class FeedbackLoop:
         """.format(current_rubric, examples)
 
     # get labeled
-    def get_labeled(self, ticket_id: str, limit: int = 50) -> pd.DataFrame:
+    def get_labeled(self, ticket_id: str = None, limit: int = 50) -> pd.DataFrame:
         """Queries human labeled (training) dataset.
         
         Args:
@@ -117,43 +129,59 @@ class FeedbackLoop:
         )
         return completion.choices[0].message.content
 
-    async def process_ticket(self, rubric_intent: str):
-        logging.info(f"Ticket ID: {self.ticket_id}")
-        extractor = ConversationExtractor(self.bq, self.ticket_id)
-        raw = extractor.get_convo_str()
-        parsed = extractor.parse_conversation(raw)
-        stats = extractor.convo_stats(parsed)
+    async def process_ticket(self, ticket_ids: list, rubric_intent: str):
+        async def run_pipeline(ticket_id: str):
+            logging.info(f"Ticket ID: {ticket_id}")
+            extractor = ConversationExtractor(self.bq, ticket_id)
+            raw = extractor.get_convo_str()
+            parsed = extractor.parse_conversation(raw)
+            stats = extractor.convo_stats(parsed)
 
-        pipeline = ConversationPipeline(
-            self.openai,
-            parsed,
-            stats,
-            self.rubric_prompt,
-            rubric_intent,
-            model=self.model
-        )
-        try:
-            result = await pipeline.run()
-            return result, pipeline
-        except Exception as e:
-            logging.error(f"Exception occurred while analyzing ticket: {e}")
-            return self.ticket_id, None
+            pipeline = ConversationPipeline(
+                self.openai,
+                parsed,
+                stats,
+                self.rubric_prompt,
+                rubric_intent,
+                model=self.model
+            )
+            try:
+                result = await pipeline.run()
+                return ticket_id, result, pipeline
+            except Exception as e:
+                logging.error(f"Exception occurred while analyzing ticket: {e}")
+                return ticket_id, None, pipeline
+
+        tasks = [run_pipeline(ticket_id) for ticket_id in ticket_ids]
+        results = await asyncio.gather(*tasks)
+        return {
+            ticket_id: {
+                "result": result,
+                "pipeline": pipeline
+            }
+            for ticket_id, result, pipeline in results
+        }
 
     # run the pipeline using base prompt
     # compare the intent ratings
     # iterate and refine the prompts if there are mismatches
     async def run_feedback_loop(self):
-        human_label = self.get_labeled(ticket_id=self.ticket_id)
+        human_label = self.get_labeled(limit=1)
         if human_label.empty:
-            logging.warning(f"No labeled data found for {self.ticket_id}")
+            logging.warning("No labeled data found.")
             return
+
+        ticket_ids = human_label["ticket_id"].to_list()
 
         rubric = self.rubric_intent
         results = None
         # Main feedback loop
         for i in range(MAX_ITER):
-            results, pipeline = await self.process_ticket(rubric)
-            transformed = FeedbackLoop.transform_scorecard_result(self.ticket_id, results)
+            # results, pipeline = await self.process_ticket(rubric)
+            results = await self.process_ticket(ticket_ids,rubric)
+            # transformed = FeedbackLoop.transform_scorecard_result(self.ticket_id, results)
+            print(results)
+            transformed = FeedbackLoop.transform_scorecard_results(results)
             llm_scorecard = pd.DataFrame(transformed).rename(columns={"top_intent": "top_intent_llm"})
             df = pd.merge(llm_scorecard, human_label, on="ticket_id")
             df["match"] = df["top_intent_llm"] == df["top_intent_h"]
@@ -184,7 +212,7 @@ class FeedbackLoop:
         else:
             print("\nMax iterations reached.")
 
-        final_transformed = FeedbackLoop.transform_scorecard_result(self.ticket_id, results)
+        final_transformed = FeedbackLoop.transform_scorecard_results(results)
         print("========== Final Results ==========\n")
         print(final_transformed)
         final_df = pd.DataFrame(final_transformed).rename(columns={"top_intent": "top_intent_llm"})
@@ -194,4 +222,4 @@ class FeedbackLoop:
         print("\n========== DataFrame ==========\n")
         print(final_df)
 
-        return results, pipeline
+        return results
