@@ -30,25 +30,6 @@ class FeedbackLoop:
         self.rubric_intent = rubric_intent
         self.model = model
 
-    # For batches
-    # @staticmethod
-    # def transform_scorecard_results(results: dict, ticket_id: str = None):
-    #     records = []
-
-    #     if isinstance(results, dict) and all(isinstance(v, dict) for v in results.values()):
-    #         for ticket, details in results.items():
-    #             records.append({
-    #                 "ticket_id": ticket,
-    #                 "top_intent": details["top_intent"]
-    #             })
-    #     elif ticket_id is not None and isinstance(results, dict):
-    #         records.append({
-    #             "ticket_id": ticket_id,
-    #             "top_intent": results["top_intent"]
-    #         })
-    #     else:
-    #         raise ValueError("Unsupported format. Check the results again.")
-    #     return records
     @staticmethod
     def transform_scorecard_results(results: dict, ticket_id: str = None):
         records = []
@@ -166,7 +147,7 @@ class FeedbackLoop:
     # compare the intent ratings
     # iterate and refine the prompts if there are mismatches
     async def run_feedback_loop(self):
-        human_label = self.get_labeled(limit=1)
+        human_label = self.get_labeled(limit=5)
         if human_label.empty:
             logging.warning("No labeled data found.")
             return
@@ -177,9 +158,7 @@ class FeedbackLoop:
         results = None
         # Main feedback loop
         for i in range(MAX_ITER):
-            # results, pipeline = await self.process_ticket(rubric)
             results = await self.process_ticket(ticket_ids,rubric)
-            # transformed = FeedbackLoop.transform_scorecard_result(self.ticket_id, results)
             print(results)
             transformed = FeedbackLoop.transform_scorecard_results(results)
             llm_scorecard = pd.DataFrame(transformed).rename(columns={"top_intent": "top_intent_llm"})

@@ -1,6 +1,36 @@
 import streamlit as st
 import pandas as pd
 
+# helpers/wrapper for saving generated schemas
+def save_schemas(results: dict, ticket_id: str | None = None):
+    saved = []
+    failed = []
+
+    items = (
+        [(ticket_id, results[ticket_id])]
+        if ticket_id
+        else results.items()
+    )
+
+    for tid, data in items:
+        pipeline_instance = data["pipeline"]
+        try:
+            pipeline_instance.save_rendered_schema(save_to_bq=False)
+            saved.append(tid)
+        except Exception as e:
+            failed.append((tid, str(e)))
+    
+    if saved:
+        if ticket_id:
+            st.success(f"Schemas for ticket {ticket_id} saved successfully!")
+        else:
+            st.succes(f"Schemas saved for tickets: {', '.join(saved)}")
+
+    if failed:
+        st.error("Some schemas failed to save:")
+        for tid, err in failed:
+            st.error(f"- {tid}: {err}")
+
 if "analysis_results" not in st.session_state:
     st.warning("No result available yet. Please run an analysis on the main form page.")
 else:
@@ -8,10 +38,15 @@ else:
 
     st.header("Intent Analysis Summary Results")
 
-    for ticket_id, data in results.items():
-        result = data["result"]
+    ticket_ids = list(results.keys())
+    selected_ticket = st.selectbox("Select a Ticket ID:", ticket_ids)
 
-        st.subheader(f"Ticket ID: {ticket_id}")
+    if selected_ticket:
+        data = results[selected_ticket]
+        result = data["result"]
+        generated_schema = data["pipeline"].rendered
+
+        st.subheader(f"Ticket ID: {selected_ticket}")
 
         st.metric(
             label="Top Intent",
@@ -31,6 +66,9 @@ else:
             for item in result["evidence"]:
                 st.markdown(f"- {item}")
 
+        st.subheader("Generated Schema")
+        st.code(generated_schema, language="python")
+
         st.subheader("Model Info")
         st.write(f"**Model Used:** {result["model"]}")
 
@@ -40,12 +78,10 @@ else:
         with st.expander("Full Raw Result"):
             st.json(result)
 
-        if "pipeline_instance" in st.session_state:
-            if st.button("Save Rendered Schema"):
-                try:
-                    st.session_state["pipeline_instance"].save_rendered_schema()
-                    st.success("Schema saved successfully!")
-                except Exception as e:
-                    st.error(f"Failed to save schema: {e}")
+    st.markdown("---")
 
-        st.markdown("---")
+    if st.button(f"Save schema for {selected_ticket}", key=f"save_{selected_ticket}"):
+        save_schemas(results, ticket_id=selected_ticket)
+
+    if st.button("Save schemas for all tickets", key="save_all"):
+        save_schemas(results)
