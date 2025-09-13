@@ -7,6 +7,12 @@ import streamlit as st
 import asyncio
 import time
 
+st.set_page_config(
+    page_title="Training",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 async def validate_api_key(api_key: str) -> bool:
     try:
         openai = await OpenAIClient(api_key).init_async_client()
@@ -15,7 +21,7 @@ async def validate_api_key(api_key: str) -> bool:
     except Exception:
         return False
 
-async def run_analysis(api_key: str, rubric_prompt: str, rubric_intent: str):
+async def run_analysis(api_key: str, limit: int, rubric_prompt: str, rubric_intent: str, iterations: int):
     if not rubric_prompt or not rubric_intent:
         st.warning("No prompt found! Using default prompts...")
         rubric_prompt=RUBRIC_PROMPT
@@ -23,7 +29,7 @@ async def run_analysis(api_key: str, rubric_prompt: str, rubric_intent: str):
 
     openai = await OpenAIClient(api_key).init_async_client()
     bq = BigQueryClient()
-    feedbackloop = FeedbackLoop(openai, bq, rubric_prompt, rubric_intent)
+    feedbackloop = FeedbackLoop(openai, bq, limit, rubric_prompt, rubric_intent, iterations)
     results = await feedbackloop.run_feedback_loop()
     return results
 
@@ -40,6 +46,20 @@ def main():
             st.caption(TRAINING_INSTRUCTIONS)
 
     with st.form("analyze_form"):
+        limit = st.number_input(
+            "Number of tickets:",
+            min_value=1,
+            max_value=100,
+            value=50,
+            help="Number of tickets to analyze (1-100, default: 50)"
+        )
+        iterations = st.number_input(
+            "Number of iterations for the feedback loop:",
+            min_value=1,
+            max_value=10,
+            value=3,
+            help="Maximum number of iterations (1-10, default: 3)"
+        )
         rubric_prompt = st.text_area("Your prompt:", key="rubric_prompt")
         rubric_intent = st.text_area("Your intent evaluation rubric:", key="rubric_intent")
         analyzed = st.form_submit_button("Analyze")
@@ -74,7 +94,7 @@ def main():
                 progress_bar.progress(percent, text="Analyzing...")
             
             results = loop.run_until_complete(run_analysis(
-                openai_api_key, rubric_prompt, rubric_intent
+                openai_api_key, limit, rubric_prompt, rubric_intent, iterations
             ))
         finally:
             loop.close()

@@ -22,14 +22,18 @@ class FeedbackLoop:
         self,
         openai: OpenAIClient,
         bq: BigQueryClient,
+        limit: int,
         rubric_prompt: str,
         rubric_intent: str,
+        iterations: int = MAX_ITER,
         model: str = "gpt-4.1-mini"
     ):
         self.openai = openai
         self.bq = bq
+        self.limit = limit
         self.rubric_prompt = rubric_prompt
         self.rubric_intent = rubric_intent
+        self.iterations = iterations
         self.model = model
         self.rubric_history = []
 
@@ -55,31 +59,72 @@ class FeedbackLoop:
         return records
 
 
-    @staticmethod
-    def build_feedback_prompt(mismatches: list, current_rubric: str):
+    async def identify_rubric_issues(self, mismatches: list, current_rubric: str):
         examples = "\n\n".join(
             f"Conversation {m['ticket_id']}:\n"
             f"- LLM predicted: {m['llm']}:\n"
             f"- Human label: {m['human']}:\n"
             for m in mismatches
         )
-        return """
-        Update the rubric for classifying the intent rating on a conversation between a client and an agent.
+        prompt = f"""
+        Analyze the current rubric for classifying intent ratings and identify potential issues.
 
         Here is the current rubric:
-
         ---
-        {}
+        {current_rubric}
         ---
-        Here are cases where your classification did not align with human labels:
-        {}
+        
+        Here are cases where the classification did not align with human labels:
+        {examples}
 
+        Task: Identify where the rubric may be unclear, incomplete, or misleading based on these mismatches.
+        Provide a detailed analysis of the issues found.
+        """
+        print(f"identify():\n{prompt}")
+        completion = await self.openai.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "You are an expert at analyzing classification rubrics and identifying potential issues."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return completion.choices[0].message.content
 
-        Task:
-        1. Identify where the rubric may be unclear, incomplete, or misleading.  
-        2. Modify the rubric to resolve these mismatches while preserving correct logic for other cases.  
-        3. Return ONLY the improved rubric text, not explanations.
-        """.format(current_rubric, examples)
+    async def modify_rubric(self, mismatches: list, current_rubric: str, identified_issues: str):
+        examples = "\n\n".join(
+            f"Conversation {m['ticket_id']}:\n"
+            f"- LLM predicted: {m['llm']}:\n"
+            f"- Human label: {m['human']}:\n"
+            for m in mismatches
+        )
+        prompt = f"""
+        Analyze the current rubric for classifying intent ratings and identify potential issues.
+
+        Here is the current rubric:
+        ---
+        {current_rubric}
+        ---
+
+        Previously identified issues:
+        ---
+        {identified_issues}
+        ---
+        
+        Here are the mismatched cases to address:
+        {examples}
+
+        Task: Modify the rubric to resolve these mismatches while preserving correct logic for other cases.
+        Return ONY the improved rubric text, not explanations.
+        """
+        print(f"modify():\n{prompt}")
+        completion = await self.openai.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "You are an expert at writing precise classification rubrics."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return completion.choices[0].message.content
 
     def save_rubric(self, rubric: str, iteration: int, timestamp: str = None):
         os.makedirs("rubrics", exist_ok=True)
@@ -123,15 +168,22 @@ class FeedbackLoop:
         return self.bq.execute_query(query)
 
     async def refine_rubric(self, mismatches: list, current_rubric: str):
-        prompt = FeedbackLoop.build_feedback_prompt(mismatches, current_rubric)
-        completion = await self.openai.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": "You are an expert at writing precise classification rubrics."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        return completion.choices[0].message.content
+        # prompt = FeedbackLoop.build_feedback_prompt(mismatches, current_rubric)
+        # completion = await self.openai.chat.completions.create(
+        #     model=self.model,
+        #     messages=[
+        #         {"role": "system", "content": "You are an expert at writing precise classification rubrics."},
+        #         {"role": "user", "content": prompt}
+        #     ]
+        # )
+        # return completion.choices[0].message.content
+        identified_issues = await self.identify_rubric_issues(mismatches, current_rubric)
+        logging.info("Issues identified in current rubric.")
+
+        modified_rubric = await self.modify_rubric(mismatches, current_rubric, identified_issues)
+        logging.info("Rubric modified based on identified issues.")
+
+        return modified_rubric
 
     async def process_ticket(self, ticket_ids: list, rubric_intent: str):
         async def run_pipeline(ticket_id: str):
@@ -170,7 +222,7 @@ class FeedbackLoop:
     # compare the intent ratings
     # iterate and refine the prompts if there are mismatches
     async def run_feedback_loop(self):
-        human_label = self.get_labeled(limit=5)
+        human_label = self.get_labeled(limit=self.limit)
         if human_label.empty:
             logging.warning("No labeled data found.")
             return
@@ -183,8 +235,8 @@ class FeedbackLoop:
 
         self.save_rubric(rubric, 0, timestamp)
         # Main feedback loop
-        for i in range(MAX_ITER):
-            logging.info(f"Running {MAX_ITER} iterations...")
+        for i in range(self.iterations):
+            logging.info(f"Running {self.iterations} iterations...")
             results = await self.process_ticket(ticket_ids,rubric)
             print(results)
             transformed = FeedbackLoop.transform_scorecard_results(results)
@@ -198,6 +250,9 @@ class FeedbackLoop:
                 for _, row in df.iterrows()
                 if not row["match"]
             ]
+
+            print("\n========== mismatches ==========\n")
+            print(mismatches)
 
             print(f"\n========== Iteration #{i+1}==========\n")
             print(f"✅ Matches: {df['match'].sum()} | ❌ Mismatches: {len(mismatches)}")
