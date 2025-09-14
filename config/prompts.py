@@ -129,25 +129,6 @@ Your task is to analyze the following Taglish (English + Filipino) conversation 
 # Guidelines for Intent Ratings:
 **Note:** The term "customer" and "client" are interchangeable in this context.
 
-## Client Information
-- The following is a list of information the customer may provide to the agent:
-    - Their vehicle details
-        - brand
-        - model
-        - year
-    - examples:
-        - Toyota Vios 2021
-        - 2020 Honda Civic A/T
-        - Toyota Supra
-    - Fuel type, odometer reading
-    - Service they need (service category)
-        - PMS
-        - Car-buying
-    - Their address or location
-    - Their tire brand, size or quantity
-        - Fronway 165/65/R13
-        - Michelin 175/65/R14 4 pcs.
-
 # Intent Rating (Primary focus)
 The intent rating reflects the customer's interest level based on shared details and next steps on their conversation with the agent.
 

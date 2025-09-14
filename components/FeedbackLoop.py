@@ -60,12 +60,24 @@ class FeedbackLoop:
 
 
     async def identify_rubric_issues(self, mismatches: list, current_rubric: str):
-        examples = "\n\n".join(
-            f"Conversation {m['ticket_id']}:\n"
-            f"- LLM predicted: {m['llm']}:\n"
-            f"- Human label: {m['human']}:\n"
-            for m in mismatches
-        )
+        conversation = []
+        for m in mismatches:
+            ticket_id = m["ticket_id"]
+            extractor = ConversationExtractor(self.bq, ticket_id)
+            raw = extractor.get_convo_str()
+            parsed = extractor.parse_conversation(raw)
+            stats = extractor.convo_stats(parsed)
+
+            convo_block = (
+                f"Conversation for {ticket_id}:\n"
+                f"{raw}\n"
+                f"- LLM predicted: {m['llm']}\n"
+                f"- Human label: {m['human']}\n"
+                f"- Conversation stats: {stats}\n"
+            )
+            conversation.append(convo_block)
+
+        examples = "\n\n".join(conversation)
         prompt = f"""
         Analyze the current rubric for classifying intent ratings and identify potential issues.
 
@@ -98,7 +110,7 @@ class FeedbackLoop:
             for m in mismatches
         )
         prompt = f"""
-        Analyze the current rubric for classifying intent ratings and identify potential issues.
+        Modify the rubric to solve the identified issues and mismatches.
 
         Here is the current rubric:
         ---
@@ -251,7 +263,7 @@ class FeedbackLoop:
                 if not row["match"]
             ]
 
-            print("\n========== mismatches ==========\n")
+            print("\n========== Mismatches ==========\n")
             print(mismatches)
 
             print(f"\n========== Iteration #{i+1}==========\n")
