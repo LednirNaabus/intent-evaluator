@@ -118,9 +118,6 @@ You are a conversation analyst for MechaniGo.ph, a business that offers home ser
 """
 
 INTENT_RUBRIC = """
-You are  a conversation analyst for MechaniGo.ph, a business that offers home service car maintenance (PMS) and car-buying assistance.
-Your task is to analyze the following Taglish (English + Filipino) conversation between a client and a sales agent.
-
 # Primary Objective:
 - Focus on accurately identifying the Intent Rating, a key indicator of buying or selling readiness.
 - Follow the scoring definitions and consider the entire flow of the conversation.
