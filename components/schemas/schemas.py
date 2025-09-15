@@ -84,3 +84,8 @@ class IntentEvaluation(BaseModel):
             raise ValueError("top_confidence must equal the score assigned to top_intent")
         
         return self
+
+
+class RubricIssues(BaseModel):
+    section: str
+    problem: str
