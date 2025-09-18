@@ -126,6 +126,25 @@ INTENT_RUBRIC = """
 # Guidelines for Intent Ratings:
 **Note:** The term "customer" and "client" are interchangeable in this context.
 
+## Client Information
+- The following is a list of information the customer may provide to the agent:
+    - Their vehicle details
+        - brand
+        - model
+        - year
+    - examples:
+        - Toyota Vios 2021
+        - 2020 Honda Civic A/T
+        - Toyota Supra
+    - Fuel type, odometer reading
+    - Service they need (service category)
+        - PMS
+        - Car-buying
+    - Their address or location
+    - Their tire brand, size or quantity
+        - Fronway 165/65/R13
+        - Michelin 175/65/R14 4 pcs.
+
 # Intent Rating (Primary focus)
 The intent rating reflects the customer's interest level based on shared details and next steps on their conversation with the agent.
 
@@ -219,4 +238,83 @@ Rules:
 - Base decisions ONLY on provided signals + rubric; do not infer beyond evidence.
 - Prefer explicit evidence; if ambiguous, distribute probability mass accordingly.
 - Keep rationale concise (≤5 lines) and cite concrete signal fields or short snippets.
+"""
+
+########## FEEDBACK LOOP PROMPTS ########## 
+SUMMARIZE_RUBRIC_PROMPT = """
+Below are rubric issues identified across several tickets. These issues will be used to improve an evolving rubric for intent evaluation.
+
+Issues:
+{issues_text}
+
+Task:
+- Group issues by intent level(s) involved:
+    ["No Intent", "Low Intent", "Moderate Intent", "High Intent", "Hot Intent"]
+- If an issue concerns the boundary between two levels (e.g., High vs Hot), group it under that boundary.
+- For each group:
+    1. State the intent level(s) clearly (e.g., "Low vs No Intent")
+    2. Write a short, specific problem statement describing the recurring confusion or misclassification.
+    3. Include representative Ticket IDs as example.
+- Do NOT invent new issues. Only use what is in the provided issues.
+- Do NOT remove or merge intent levels.
+- Keep each issue clear, specific, and actionable.
+- Keep the output structured and organized per group.
+"""
+
+IDENTIFY_RUBRIC_ISSUES_PROMPT = """
+Below is a rubric for classifying intent ratings from a conversation between a client and a sales agent. Following the rubric are several examples where the LLM's classification did not match the human-labeled ground truth.
+
+Current Rubric:
+---
+{current_rubric}
+---
+
+Mismatched Conversation:
+---
+{convo_block}
+---
+
+Task:
+- Identify only rubric-related weaknesses, that could explain the mismatch.
+- Focus strictly on clarity, completeness, or ambiguity of the rubric.
+- Do NOT suggest adding or removing intent levels.
+- Do NOT critique the conversation quality.
+- Be specific: point to the section of the rubric that is problematic, and describe the issue concisely.
+- Use the structured format defined in `RubricIssues`.
+"""
+
+MODIFY_RUBRIC_PROMPT = """
+Below is a rubric (which may evolve) for classifying intent ratings, along with a summary of issues identified from previous classification mismatches.
+
+Constraints:
+1. Do NOT rewrite the entire rubric.
+2. Do NOT add, remove, rename or merge any intent levels.
+    - The intent levels MUST remain: ["No Intent", "Low Intent", "Moderate Intent", "High Intent", "Hot Intent"]
+3. Preserve the structure, format, and intent levels exactly as they are.
+4. Modify ONLY the sections directly mentioned in the issues summary.
+5. Unmentioned sections MUST remain identical to the original rubric.
+6. If an issue cannot be clearly fixed, leave the section unchanged.
+7. Do not add disclaimers, explanations, or meta-commentary.
+
+Current/Previous Rubric (evolving):
+---
+{current_rubric}
+---
+
+Identified Issues:
+---
+{identified_issues}
+---
+Task:
+- Apply minimal, section-specific changes to fix the identified issues.
+- Return the ENTIRE updated rubric with ALL five intents still present.
+- Do NOT omit or collapse sections.
+"""
+
+SYSTEM_MODIFY_RUBRIC_PROMPT = """
+You are an expert at writing precise intent rating rubrics. Read the current current rubric and the given identified issues.
+
+Do not include meta-commentary, disclaimers, or sentences about the purpose of the rubric.
+
+IMPORTANT: Only return the modified rubric.
 """
