@@ -44,11 +44,11 @@ else:
 
     st.header("Intent Analysis Summary Results")
 
-    ticket_ids = list(results.keys())
+    ticket_ids = list(results["current_results"].keys())
     selected_ticket = st.selectbox("Select a Ticket ID:", ticket_ids)
 
     if selected_ticket:
-        data = results[selected_ticket]
+        data = results["current_results"][selected_ticket]
         result = data["result"]
         generated_schema = data["pipeline"].rendered
 
