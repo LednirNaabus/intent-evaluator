@@ -11,7 +11,7 @@ st.set_page_config(
 
 def load_rubric_files():
     rubric_files = []
-    rubrics_dir = "rubrics"
+    rubrics_dir = "rubrics/evolution"
 
     if os.path.exists(rubrics_dir):
         for filename in os.listdir(rubrics_dir):

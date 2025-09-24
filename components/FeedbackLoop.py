@@ -235,11 +235,11 @@ class FeedbackLoop:
             return current_rubric
 
     def save_rubric(self, rubric: str, iteration: int, timestamp: str = None):
-        os.makedirs("rubrics", exist_ok=True)
+        os.makedirs("rubrics/evolution", exist_ok=True)
         if timestamp is None:
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
 
-        filename = f"rubrics/rubric_v{iteration}.txt"
+        filename = f"rubrics/evolution/rubric_v{iteration}.txt"
         with open(filename, "w", encoding="utf-8") as f:
             f.write(rubric)
 
