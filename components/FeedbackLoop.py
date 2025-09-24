@@ -239,7 +239,7 @@ class FeedbackLoop:
         if timestamp is None:
             timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
 
-        filename = f"rubrics/evolution/rubric_v{iteration}.txt"
+        filename = f"rubrics/evolution/rubric_v{iteration}_{timestamp}.txt"
         with open(filename, "w", encoding="utf-8") as f:
             f.write(rubric)
 

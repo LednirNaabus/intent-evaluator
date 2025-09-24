@@ -1,6 +1,7 @@
 from config import SYSTEM_MODIFY_RUBRIC_PROMPT, UNWANTED_PATTERNS
 from components.schemas import RubricIssues
 from clients import OpenAIClient
+from datetime import datetime
 import logging
 import json
 import os
@@ -122,9 +123,14 @@ class RubricProcessor:
             logging.error(f"OpenAI API error during rubric modification: {e}")
             return current_rubric
 
-    def save_rubric_artifacts(self, run_dir: str, iteration: int, file_data: list):
+    def save_rubric_artifacts(self, run_dir: str, iteration: int, file_data: list, timestamp: str = None):
+        if timestamp is None:
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+
         for item in file_data:
             file_name = item["file_name"]
+            base, ext = os.path.splitext(file_name)
+            file_name = f"{base}_{timestamp}{ext}"
             data = item["data"]
 
             file_path = os.path.join(run_dir, file_name.format(iteration=iteration))
