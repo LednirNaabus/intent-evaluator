@@ -15,6 +15,7 @@ from config import (
 
 from components import ConversationExtractor, ConversationPipeline, RubricProcessor
 from clients import BigQueryClient, OpenAIClient
+from sklearn.metrics import confusion_matrix
 
 from datetime import datetime
 import pandas as pd
@@ -26,6 +27,10 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
+
+LABELS = [
+    "No Intent", "Low Intent", "Moderate Intent", "High Intent", "Hot Intent"
+]
 
 class FeedbackLoop:
     def __init__(
@@ -50,6 +55,7 @@ class FeedbackLoop:
         self.rubric_history = []
         self._conversation_cache = {}
         self.accuracies = []
+        self.per_class_accuracies = []
 
     @staticmethod
     def transform_scorecard_results(results: dict, ticket_id: str = None):
@@ -73,11 +79,35 @@ class FeedbackLoop:
         return records
 
     @staticmethod
-    def get_run_dir(base_dir: dir = "rubrics"):
-        ts = datetime.now().strftime("%Y-%m-%d")
-        run_dir = os.path.join(base_dir, f"run_{ts}")
+    def get_run_dir(iteration: int, timestamp: str = None, base_dir: dir = "rubrics/runs"):
+        if timestamp is None:
+            timestamp = datetime.now().strftime("%Y-%m-%d")
+        dir = f"run_{timestamp}/run_{iteration}"
+        run_dir = os.path.join(base_dir, dir)
         os.makedirs(run_dir, exist_ok=True)
         return run_dir
+
+    @staticmethod
+    def compute_per_class_accuracy(df: pd.DataFrame, labels=None):
+        if labels is None:
+            labels = sorted(set(df["top_intent_h"]) | df["top_intent_llm"])
+        cm = confusion_matrix(
+            df["top_intent_h"],
+            df["top_intent_llm"],
+            labels=labels
+        )
+        per_class_accuracy = {}
+        for i, label in enumerate(labels):
+            true_positives = cm[i, i]
+            total_actual = cm[i].sum()
+            acc = true_positives / total_actual if total_actual > 0 else 0
+            per_class_accuracy[label] = acc
+
+        return {
+            "confusion_matrix": cm,
+            "labels": labels,
+            "per_class_accuracy": per_class_accuracy
+        }
 
     async def batch_extract_conversations(self, ticket_ids: list):
         conversations = {}
@@ -216,7 +246,7 @@ class FeedbackLoop:
                 {"file_name": "issues_v{iteration}.json", "data": identified_issues},
                 {"file_name": "issues_summary_v{iteration}.txt", "data": summarized_issues}
             ]
-            run_dir = FeedbackLoop.get_run_dir()
+            run_dir = FeedbackLoop.get_run_dir(iteration) # rubrics/runs/runs_Y-m-d
             processor.save_rubric_artifacts(run_dir, iteration, file_data)
 
             logging.info("========== Modifying Rubric ==========")
@@ -235,11 +265,12 @@ class FeedbackLoop:
             return current_rubric
 
     def save_rubric(self, rubric: str, iteration: int, timestamp: str = None):
-        os.makedirs("rubrics/evolution", exist_ok=True)
         if timestamp is None:
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+            timestamp = datetime.now().strftime("%Y-%m-%d")
+        initial_dir = f"rubrics/runs/run_{timestamp}/run_{iteration}"
+        os.makedirs(initial_dir, exist_ok=True)
 
-        filename = f"rubrics/evolution/rubric_v{iteration}_{timestamp}.txt"
+        filename = initial_dir + f"/rubric_v{iteration}.txt"
         with open(filename, "w", encoding="utf-8") as f:
             f.write(rubric)
 
@@ -355,6 +386,14 @@ class FeedbackLoop:
                 new_accuracy = test["current_accuracy"]
                 new_df = test["current_df"]
 
+                metrics = FeedbackLoop.compute_per_class_accuracy(new_df, LABELS)
+                per_class_accuracy = metrics["per_class_accuracy"]
+                self.per_class_accuracies.append(per_class_accuracy)
+
+                logging.info("========== Per-Intent Accuracy ==========")
+                for label, acc in per_class_accuracy.items():
+                    logging.info(f"{label}: {acc:.2%}")
+
             improvement = new_accuracy - current_accuracy
             logging.info(f"Collecting accuracy #{iteration}...")
             self.accuracies.append(new_accuracy)
@@ -424,11 +463,25 @@ class FeedbackLoop:
         for result in final_transformed:
             logging.info(f"Ticket {result['ticket_id']}: {result['top_intent']}")
 
+        final_metrics = FeedbackLoop.compute_per_class_accuracy(current_df, LABELS)
+        final_cm = final_metrics["confusion_matrix"]
+        final_labels = final_metrics["labels"]
+        final_per_class_accuracy = final_metrics["per_class_accuracy"]
+
+        self.per_class_accuracies.append(final_per_class_accuracy)
+
+        logging.info("========== Final Per-Intent Accuracy ==========")
+        for label, acc in final_per_class_accuracy.items():
+            logging.info(f"{label}: {acc:.2%}")
+
         return {
             "current_results": current_results,
             "iteration": iteration,
             "initial_accuracy": initial_accuracy,
             "final_accuracy": final_accuracy,
             "total_improvement": total_improvement,
-            "accuracies": self.accuracies
+            "accuracies": self.accuracies,
+            "per_class_accuracy": self.per_class_accuracies,
+            "confusion_matrix": final_cm,
+            "labels": final_labels
         }

@@ -11,30 +11,40 @@ st.set_page_config(
 
 def load_rubric_files():
     rubric_files = []
-    rubrics_dir = "rubrics/evolution"
+    rubrics_dir = "rubrics/runs"
 
     if os.path.exists(rubrics_dir):
-        for filename in os.listdir(rubrics_dir):
-            if filename.startswith("rubric_v") and filename.endswith(".txt"):
-                filepath = os.path.join(rubrics_dir, filename)
-                try:
-                    parts = filename.replace("rubric_v", "").replace(".txt", "").split("-")
-                    iteration = int(parts[0])
-                    timestamp = parts[1] if len(parts) > 1 else "unknown"
+        for date_dir in os.listdir(rubrics_dir):
+            full_date_path = os.path.join(rubrics_dir, date_dir)
+            if not os.path.isdir(full_date_path) or not date_dir.startswith("run_"):
+                continue
 
-                    with open(filepath, "r", encoding="utf-8") as f:
-                        content = f.read()
+            timestamp = date_dir.replace("run_", "")
 
-                    rubric_files.append({
-                        "iteration": iteration,
-                        "timestamp": timestamp,
-                        "filename": filename,
-                        "filepath": filepath,
-                        "content": content
-                    })
-                except (ValueError, IndexError, IOError) as e:
-                    st.warning(f"Could not load file: {filename}: {e}")
+            for run_dir in os.listdir(full_date_path):
+                run_path = os.path.join(full_date_path, run_dir)
+                if not os.path.isdir(run_path) or not run_dir.startswith("run"):
+                    continue
 
+                for filename in os.listdir(run_path):
+                    if filename.startswith("rubric_v") and filename.endswith(".txt"):
+                        filepath = os.path.join(run_path, filename)
+                        try:
+                            iteration = int(filename.replace("rubric_v", "").replace(".txt", ""))
+
+                            with open(filepath, "r", encoding="utf-8") as f:
+                                content = f.read()
+
+                            rubric_files.append({
+                                "iteration": iteration,
+                                "timestamp": timestamp,
+                                "run_dir": run_dir,
+                                "filename": filename,
+                                "filepath": filepath,
+                                "content": content
+                            })
+                        except (ValueError, IndexError, IOError) as e:
+                            st.warning(f"Could not load file: {filepath}: {e}")
     rubric_files.sort(key=lambda x: x["iteration"])
     return rubric_files
 
