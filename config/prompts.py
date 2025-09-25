@@ -118,6 +118,10 @@ You are a conversation analyst for MechaniGo.ph, a business that offers home ser
 """
 
 INTENT_RUBRIC = """
+You are a conversation analyst for MechaniGo.ph, a business that offers home maintenance (PMS) and car-buying assistance.
+
+Your task is to analyze the following Taglish (English + Filipino) conversation between a client and a sales agent.
+
 # Primary Objective:
 - Focus on accurately identifying the Intent Rating, a key indicator of buying or selling readiness.
 - Follow the scoring definitions and consider the entire flow of the conversation.
@@ -148,33 +152,74 @@ INTENT_RUBRIC = """
 # Intent Rating (Primary focus)
 The intent rating reflects the customer's interest level based on shared details and next steps on their conversation with the agent.
 
-# No Intent
-- When the customer leaves the agent hanging (i.e., no reply after a message)
-- When the customer provides information but does not message afterwards
-- When the customer provides information and does not have a follow up
-- Classify as **No Intent** if the chat is spam, prank, or the client has no real inquiry
+## No Intent
+- Main Idea: Customer has no real inquiry
+    - Sub Ideas:
+        - The customer only replies to an ad (Automated message)
+        - The customer leaves the agent hanging (i.e., no reply after a message)
+        - The customer provides information but does not have a follow up
 
 ## Low Intent
-- Early-stage inquiries/general inquiries
-- Classify as **Low Intent** if the client replies are vague and shows little intention of buying or inquiring any services
-- Client provided at least 2 items from the client information list **AND** usually has a follow up message
+- Main Idea: Early-stage inquiries/general inquiries
+    - Sub Ideas:
+        - The customer's inquiry ONLY involves ANY of the following:
+            - The customer is canvassing only and doesn't message afterwards
+                - Asking about price of services, such as:
+                    - "Hm po ang pms oil change?"
+                    - "how much po Toyota vios xle cvt at 50km pms change cvt fluid"
+                - Asking about the location:
+                    - "hm po nag pa assist around qc"
+                    - "meron po kayo branch sa cainta"
+                    - "san main branch nyo?"
+        - The customer shows little intention of buying or inquiring any services
+        - The customer provided at least 2 items from the client information list **AND** usually has a follow up message
 
 ## Moderate Intent
-- The customer shows interest in availing a service
-- Customer requests to schedule or arrange for a service, with a sense of urgency
-- The client provided at least 3 items from the client information list **AND** most of the time has a follow up message
+- Main Idea: The client provided basic purchase details and information but does not move forward with any scheduling or payment.
+    - Sub Ideas:
+        - The customer provided at least 3 items from the client information list **AND** most of the time has a follow up message
+        - General engagement:
+            - If the customer shows interest but does not mention any schedule
 
 ## High Intent
-- The client is close to deciding and engaging actively
-- If the service the client availed is not Car-buying:
-    - The customer must provide **ALL** client information to be classified as High Intent
-    - The customer shared their available schedule or they asked about the available schedule
-- If the service the client availed is Car-buying:
-    - Mentioning interest in a schedule is enough to be classified as High Intent
-
+- Main Idea: Customer shows readiness to proceed by providing schedule, or asks payment-related questions WITH HIGH ENGAGEMENT.
+    - Sub Idea:
+        - For Car-buying Services:
+            - Scheduling Mention: if the customer indicates interest in scheduling or asks about availability, this is enough to be classified as High Intent.
+                - Examples:
+                    - "Pede po bukas?"
+                    - "Next week po"
+                    - "Kaya po ba mamaya 2pm?"
+                    - "May availability po ba this weekend?"
+                    - "Soonest available date sana"
+            - Payment Inquiries: If the customer asks about payment methods (but hasn't confirmed any details yet), it also qualifies.
+                - Examples:
+                    - "Pede gcash?"
+                    - "Pede credit?"
+                    - "San po ako magbayad?"
+        - For Non-Car-buying services:
+            - Client information provided: If the customer provides **ALL** required client information but hasn't confirmed a schedule or payment
+            - High engagement: Multiple exchanges occurred; The customer shows interest in scheduling but does not confirm a specific time
 ## Hot Intent
-- The customer explicitly confirms a service booking or completes/commits to payment
-- Classify as Hot Intent if the customer engages about process/reservation/booking with intent
+- Main Idea: Customer has explicitly confirmed or completed key actions towards finalizing the service, including confirming the booking or making a payment (partial or full).
+    - Sub Ideas:
+        - Explicit Booking Confirmation:
+            - Customer explicitly confirms a booking with clear details (date, time, etc.), or the agent does so on behalf of the custoemr.
+                - "Here's my reservation fee screenshot"
+                - "Booking confirmed for tomorrow at 2pm"
+        - Payment Evidence:
+            - Customer sends payment details or evidence of transaction (partial or full).
+                - "Here's my payment receipt"
+                - "I sent the downpayment via GCash"
+        - Completed Client Information:
+            - Customer provides all required details and confirms readiness to proceed, including agreeing on the service specifics.
+                - "All details provided, ready to confirm the schedule"
+        - Order Confirmation:
+            - The customer or agent confirms the service order or booking.
+                - The agent acknowledges receipt with confirmation, e.g., "Receipt acknowledged po."
+                - Customer explicitly approves the job order or agrees to proceed
+                - Example:
+                    - "Please go ahead with the schedule"
 """
 
 # ConvoExtractSchema
