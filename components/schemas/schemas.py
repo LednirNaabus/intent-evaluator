@@ -89,3 +89,13 @@ class IntentEvaluation(BaseModel):
 class RubricIssues(BaseModel):
     section: str
     problem: str
+
+
+class RubricIssueGroup(BaseModel):
+    levels: str
+    problem: str
+    examples: List[str]
+
+
+class SummarizedRubricIssues(BaseModel):
+    groups: List[RubricIssueGroup]

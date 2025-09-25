@@ -1,5 +1,5 @@
+from components.schemas import RubricIssues, SummarizedRubricIssues
 from config import SYSTEM_MODIFY_RUBRIC_PROMPT, UNWANTED_PATTERNS
-from components.schemas import RubricIssues
 from clients import OpenAIClient
 from datetime import datetime
 import logging
@@ -60,9 +60,10 @@ class RubricProcessor:
             {"role": "user", "content": prompt}
         ]
         try:
-            completion = await self.openai.chat.completions.create(
+            completion = await self.openai.chat.completions.parse(
                 model=self.model,
                 messages=messages,
+                response_format=SummarizedRubricIssues,
                 temperature=self.temperature,
                 max_tokens=800
             )
@@ -116,7 +117,7 @@ class RubricProcessor:
                 model=self.model,
                 messages=messages,
                 temperature=self.temperature,
-                max_tokens=1500
+                max_tokens=2000
             )
             return completion.choices[0].message.content.strip()
         except Exception as e:
@@ -125,7 +126,7 @@ class RubricProcessor:
 
     def save_rubric_artifacts(self, run_dir: str, iteration: int, file_data: list, timestamp: str = None):
         if timestamp is None:
-            timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+            timestamp = datetime.now().strftime("%Y-%m-%d")
 
         for item in file_data:
             file_name = item["file_name"]
